@@ -1,35 +1,65 @@
 <!DOCTYPE html>
 <html>
+<head>
+  <title>User System</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #e3f2fd;
+      text-align: center;
+      padding: 40px;
+    }
+    button {
+      font-size: 28px;
+      padding: 30px;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 20px;
+    }
+    #status {
+      margin-top: 30px;
+      font-size: 22px;
+      color: #333;
+    }
+  </style>
+</head>
 <body>
-<h2>♿ USER SYSTEM</h2>
+
+<h1>♿ USER SYSTEM</h1>
+
+<button onclick="start()">TAP TO CALL BUS</button>
+
+<div id="status">Waiting...</div>
 
 <script>
 const ws = new WebSocket("wss://blind-transport.onrender.com/");
+const status = document.getElementById("status");
+
+function speak(text, times = 1) {
+  for (let i = 0; i < times; i++) {
+    speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  }
+}
 
 ws.onopen = () => {
   ws.send(JSON.stringify({ type: "USER_CONNECT" }));
 };
 
-const synth = speechSynthesis;
-
-function speak(text, repeat = 1) {
-  for (let i = 0; i < repeat; i++) {
-    synth.speak(new SpeechSynthesisUtterance(text));
-  }
-}
-
-document.body.onclick = () => {
+function start() {
+  status.innerText = "Listening for bus number...";
   speak("Please say the bus number");
 
   const rec = new webkitSpeechRecognition();
+  rec.lang = "en-US";
   rec.start();
+
   rec.onresult = e => {
-    ws.send(JSON.stringify({
-      type: "BUS_REQUEST",
-      bus: e.results[0][0].transcript
-    }));
+    const bus = e.results[0][0].transcript;
+    status.innerText = "Bus " + bus + " requested";
+    ws.send(JSON.stringify({ type: "BUS_REQUEST", bus }));
   };
-};
+}
 
 let uLat, uLon;
 navigator.geolocation.watchPosition(p => {
@@ -39,10 +69,12 @@ navigator.geolocation.watchPosition(p => {
 
 ws.onmessage = e => {
   const d = JSON.parse(e.data);
+
   if (d.type === "BUS_GPS") {
-    const dist = distance(uLat, uLon, d.lat, d.lon);
-    const time = dist / 30;
-    speak(Math.ceil(time) + " minutes left");
+    const dist = getDistance(uLat, uLon, d.lat, d.lon);
+    const mins = Math.ceil(dist / 30 / 60);
+    speak(mins + " minutes left");
+    status.innerText = mins + " minutes left";
 
     if (dist < 20) {
       navigator.vibrate([500,500,500]);
@@ -51,12 +83,13 @@ ws.onmessage = e => {
   }
 };
 
-function distance(a,b,c,d) {
+function getDistance(a,b,c,d) {
   const R=6371000;
   const x=(c-a)*Math.PI/180;
   const y=(d-b)*Math.PI/180;
-  const k=Math.sin(x/2)**2+
-  Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;
+  const k=Math.sin(x/2)**2 +
+    Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180) *
+    Math.sin(y/2)**2;
   return R*2*Math.atan2(Math.sqrt(k),Math.sqrt(1-k));
 }
 </script>
