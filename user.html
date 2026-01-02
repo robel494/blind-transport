@@ -4,7 +4,7 @@
 <h2>♿ USER SYSTEM</h2>
 
 <script>
-const ws = new WebSocket("WSS_URL_HERE");
+const ws = new WebSocket("wss://blind-transport.onrender.com/");
 
 ws.onopen = () => {
   ws.send(JSON.stringify({ type: "USER_CONNECT" }));
