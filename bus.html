@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>🚌 BUS SYSTEM</h2>
+<div id="alert"></div>
+
+<script>
+const ws = new WebSocket("WSS_URL_HERE");
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({ type: "BUS_CONNECT" }));
+};
+
+ws.onmessage = e => {
+  const data = JSON.parse(e.data);
+
+  if (data.type === "BUS_REQUEST") {
+    document.getElementById("alert").innerText =
+      "🚨 Blind person waiting at Station 4";
+
+    navigator.geolocation.watchPosition(pos => {
+      ws.send(JSON.stringify({
+        type: "BUS_GPS",
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude
+      }));
+    });
+  }
+};
+</script>
+</body>
+</html>

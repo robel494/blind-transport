@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>♿ USER SYSTEM</h2>
+
+<script>
+const ws = new WebSocket("WSS_URL_HERE");
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({ type: "USER_CONNECT" }));
+};
+
+const synth = speechSynthesis;
+
+function speak(text, repeat = 1) {
+  for (let i = 0; i < repeat; i++) {
+    synth.speak(new SpeechSynthesisUtterance(text));
+  }
+}
+
+document.body.onclick = () => {
+  speak("Please say the bus number");
+
+  const rec = new webkitSpeechRecognition();
+  rec.start();
+  rec.onresult = e => {
+    ws.send(JSON.stringify({
+      type: "BUS_REQUEST",
+      bus: e.results[0][0].transcript
+    }));
+  };
+};
+
+let uLat, uLon;
+navigator.geolocation.watchPosition(p => {
+  uLat = p.coords.latitude;
+  uLon = p.coords.longitude;
+});
+
+ws.onmessage = e => {
+  const d = JSON.parse(e.data);
+  if (d.type === "BUS_GPS") {
+    const dist = distance(uLat, uLon, d.lat, d.lon);
+    const time = dist / 30;
+    speak(Math.ceil(time) + " minutes left");
+
+    if (dist < 20) {
+      navigator.vibrate([500,500,500]);
+      speak("Bus has arrived", 4);
+    }
+  }
+};
+
+function distance(a,b,c,d) {
+  const R=6371000;
+  const x=(c-a)*Math.PI/180;
+  const y=(d-b)*Math.PI/180;
+  const k=Math.sin(x/2)**2+
+  Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;
+  return R*2*Math.atan2(Math.sqrt(k),Math.sqrt(1-k));
+}
+</script>
+</body>
+</html>
