@@ -93,17 +93,22 @@
     <div class="pill" id="connection">በመገናኘት ላይ…</div>
   </div>
   <div class="body">
-    <button class="cta" onclick="start()">
+    <button class="cta">
       ባስ ለመጥራት የትኛውንም ቦታ ይንኩ
     </button>
     <div class="hint" id="hint">
-      የባስ ቁጥር ለመናገር ይንኩ። ባስ ሲደርስ መድረሻዎን ለመናገር ዳግም ይንኩ።
+      የትኛውንም ቦታ ይንኩ ለመጀመር
     </div>
     <div id="status">በመጠባበቅ ላይ…</div>
   </div>
 </div>
 
 <script>
+/* PLAY START PROMPT ON LOAD */
+window.onload = () => {
+  play("start.wav");
+};
+
 const ws = new WebSocket("wss://blind-transport.onrender.com/");
 const status = document.getElementById("status");
 const hint = document.getElementById("hint");
@@ -119,21 +124,10 @@ function play(file, times = 1) {
   }
 }
 
-/* FARE CALCULATION */
-function calculateFare(distanceMeters) {
-  const km = Math.ceil(distanceMeters / 1000);
-  let fare = km * 10;
-
-  if (fare <= 10) {
-    play("money1.wav");
-    return 10;
-  }
-  if (fare <= 20) {
-    play("money2.wav");
-    return 20;
-  }
-  play("money3.wav");
-  return 30;
+/* TIME CALCULATION (ACCURATE) */
+function calculateMinutes(distanceMeters) {
+  const km = distanceMeters / 1000;
+  return Math.ceil((km / 30) * 60); // 30 km/h
 }
 
 ws.onopen = () => {
@@ -160,11 +154,10 @@ function start() {
 
   rec.onresult = e => {
     const bus = e.results[0][0].transcript;
-    status.innerText = "ባስ " + bus + " ተጠርቷል";
     ws.send(JSON.stringify({ type: "BUS_REQUEST", bus }));
     play("request_sent.wav");
     phase = "awaitBus";
-    hint.innerText = "ባስ በመጠባበቅ ላይ። ጊዜው በድምፅ ይነገራል።";
+    hint.innerText = "ባስ በመጠባበቅ ላይ።";
   };
 }
 
@@ -179,9 +172,10 @@ ws.onmessage = e => {
   if (d.type === "BUS_GPS") {
     lastBusLat = d.lat;
     lastBusLon = d.lon;
-    if (uLat == null || uLon == null) return;
+    if (!uLat || !uLon) return;
 
     const dist = getDistance(uLat, uLon, d.lat, d.lon);
+    const mins = calculateMinutes(dist);
 
     if (dist < 20) {
       navigator.vibrate([500,500,500]);
@@ -189,10 +183,12 @@ ws.onmessage = e => {
       phase = "destination";
       hint.innerText = "መድረሻዎን ለመናገር ይንኩ።";
       status.innerText = "ባስ ደርሷል";
-    } else if (dist < 10000) {
+    } else if (mins <= 10) {
       play("bus_arrival_below_10.wav");
+      status.innerText = "ባስ ከ10 ደቂቃ በታች";
     } else {
       play("bus_arrival_above_10.wav");
+      status.innerText = "ባስ ከ10 ደቂቃ በላይ";
     }
   }
 };
@@ -207,7 +203,6 @@ function promptDestination() {
 
   rec.onresult = e => {
     const phrase = e.results[0][0].transcript.trim();
-    status.innerText = "መድረሻ፦ " + phrase;
 
     fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(phrase)}`)
       .then(res => res.json())
@@ -217,30 +212,32 @@ function promptDestination() {
         const destLat = parseFloat(results[0].lat);
         const destLon = parseFloat(results[0].lon);
 
-        const dist = getDistance(lastBusLat, lastBusLon, destLat, destLon);
-        const fare = calculateFare(dist);
+        const interval = setInterval(() => {
+          const dist = getDistance(lastBusLat, lastBusLon, destLat, destLon);
+          const mins = calculateMinutes(dist);
 
-        status.innerText = `ክፍያ፦ ${fare} ብር`;
-
-        const checkArrival = setInterval(() => {
-          const d = getDistance(lastBusLat, lastBusLon, destLat, destLon);
-          if (d < 20) {
-            clearInterval(checkArrival);
+          if (dist < 20) {
+            clearInterval(interval);
             play("unboard.wav", 2);
             status.innerText = "ጉዞ ተጠናቀቀ";
-            hint.innerText = "ጉዞዎ ተጠናቀቀ";
             phase = "complete";
+          } else if (mins <= 10) {
+            play("bus_arrival_below_10.wav");
+            status.innerText = "መድረሻ ከ10 ደቂቃ በታች";
+          } else {
+            play("bus_arrival_above_10.wav");
+            status.innerText = "መድረሻ ከ10 ደቂቃ በላይ";
           }
-        }, 5000);
+        }, 15000);
       });
   };
 }
 
 function getDistance(a,b,c,d) {
-  const R=6371000;
-  const x=(c-a)*Math.PI/180;
-  const y=(d-b)*Math.PI/180;
-  const k=Math.sin(x/2)**2 +
+  const R = 6371000;
+  const x = (c-a)*Math.PI/180;
+  const y = (d-b)*Math.PI/180;
+  const k = Math.sin(x/2)**2 +
     Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180) *
     Math.sin(y/2)**2;
   return R*2*Math.atan2(Math.sqrt(k),Math.sqrt(1-k));
