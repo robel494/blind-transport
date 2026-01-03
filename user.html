@@ -79,7 +79,6 @@ function calculateMinutes(distanceMeters) {
   return Math.ceil((km / 30) * 60);
 }
 
-// Simple Euclidean distance in meters
 function getDistance(a,b,c,d) {
   const R = 6371000;
   const x = (c-a)*Math.PI/180;
@@ -106,7 +105,7 @@ function screenTap() {
 async function start() {
   status.innerText = "የባስ ቁጥር እየተሰማ…";
   await play("enter_bus_number.wav"); // wait for voice to finish
-  startRecordingBusNumber();
+  setTimeout(() => startRecordingBusNumber(), 4000); // start recording after 4s delay
 }
 
 function startRecordingBusNumber() {
@@ -168,7 +167,7 @@ ws.onmessage = e => {
 async function promptDestination() {
   status.innerText = "መድረሻ እየተሰማ…";
   await play("enter_destination.wav"); // wait for voice to finish
-  startRecordingDestination();
+  setTimeout(() => startRecordingDestination(), 4000); // 4 sec delay before recording
 }
 
 function startRecordingDestination() {
