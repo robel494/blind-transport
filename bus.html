@@ -3,29 +3,118 @@
 <head>
   <title>Bus System</title>
   <style>
-    body {
-      font-family: Arial;
-      background: #ffebee;
-      text-align: center;
-      padding: 40px;
+    :root {
+      --bg: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+      --card-bg: #ffffffcc;
+      --primary: #d50000;
+      --accent: #ff6f00;
+      --text: #2d2d2d;
     }
-    #alert {
-      font-size: 32px;
-      color: red;
-      margin-top: 40px;
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 720px;
+      background: var(--card-bg);
+      backdrop-filter: blur(6px);
+      border-radius: 28px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+      overflow: hidden;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+    .header {
+      padding: 28px;
+      background: linear-gradient(120deg, #ff1744, #ff9100);
+      color: #fff;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 36px;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .body {
+      padding: 28px;
+    }
+    .alert {
+      font-size: 28px;
+      color: var(--primary);
+      margin-top: 12px;
+    }
+    .status-grid {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .status {
+      background: #fff;
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .status h3 {
+      margin: 0 0 8px 0;
+      font-size: 18px;
+      color: var(--accent);
+    }
+    .pill {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #ffe0b2;
+      color: #6d4c41;
+      font-weight: 600;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
 
-<h1>🚌 BUS SYSTEM</h1>
-<div id="alert">Waiting for passenger...</div>
+<div class="card">
+  <div class="header">
+    <h1>🚌 BUS SYSTEM</h1>
+    <div class="pill" id="connection">Connecting…</div>
+  </div>
+  <div class="body">
+    <div class="alert" id="alert">Waiting for passenger…</div>
+    <div class="status-grid">
+      <div class="status">
+        <h3>Bus state</h3>
+        <div id="busState">Idle</div>
+      </div>
+      <div class="status">
+        <h3>GPS streaming</h3>
+        <div id="gpsState">Off</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 const ws = new WebSocket("wss://blind-transport.onrender.com/");
+let watchId = null;
 
 ws.onopen = () => {
+  document.getElementById("connection").innerText = "Connected";
   ws.send(JSON.stringify({ type: "BUS_CONNECT" }));
+};
+
+ws.onclose = () => {
+  document.getElementById("connection").innerText = "Disconnected";
 };
 
 ws.onmessage = e => {
@@ -34,14 +123,23 @@ ws.onmessage = e => {
   if (data.type === "BUS_REQUEST") {
     document.getElementById("alert").innerText =
       "🚨 Blind passenger waiting at Station 4";
-
-    navigator.geolocation.watchPosition(pos => {
-      ws.send(JSON.stringify({
-        type: "BUS_GPS",
-        lat: pos.coords.latitude,
-        lon: pos.coords.longitude
-      }));
-    });
+    document.getElementById("busState").innerText = "Serving request";
+    if (watchId === null) {
+      document.getElementById("gpsState").innerText = "On";
+      watchId = navigator.geolocation.watchPosition(pos => {
+        ws.send(JSON.stringify({
+          type: "BUS_GPS",
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude
+        }));
+      }, err => {
+        document.getElementById("gpsState").innerText = "Error";
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 10000
+      });
+    }
   }
 };
 </script>
