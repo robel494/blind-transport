@@ -90,7 +90,7 @@
     <div class="pill" id="connection">በመገናኘት ላይ…</div>
   </div>
   <div class="body">
-    <div class="alert" id="alert">ተጠቃሚን ለመጠባበቅ በመጠባበቅ ላይ…</div>
+    <div class="alert" id="alert">ተሳፋሪን በመጠባበቅ ላይ…</div>
     <div class="status-grid">
       <div class="status">
         <h3>የባስ ሁኔታ</h3>
@@ -128,7 +128,7 @@ ws.onmessage = e => {
 
   if (data.type === "BUS_REQUEST") {
     document.getElementById("alert").innerText =
-      "🚨 በስታሽን 4 የተጠቃሚ ተጠባበቅ በመጠባበቅ ላይ";
+      "🚨 በስቴሽን 4 ተሳፋሪ በመጠባበቅ ላይ";
     playAlert();
     document.getElementById("busState").innerText = "በጥያቄ ላይ";
     if (watchId === null) {
