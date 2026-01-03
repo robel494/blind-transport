@@ -104,11 +104,6 @@
 </div>
 
 <script>
-/* PLAY START PROMPT ON LOAD */
-window.onload = () => {
-  play("start.wav");
-};
-
 const ws = new WebSocket("wss://blind-transport.onrender.com/");
 const status = document.getElementById("status");
 const hint = document.getElementById("hint");
@@ -117,6 +112,10 @@ let phase = "callBus";
 let uLat, uLon;
 let lastBusLat, lastBusLon;
 
+/* NEW FLAGS (REQUIRED) */
+let busArrivedAnnounced = false;
+let lastMinuteState = null;
+
 /* AUDIO PLAYER */
 function play(file, times = 1) {
   for (let i = 0; i < times; i++) {
@@ -124,10 +123,10 @@ function play(file, times = 1) {
   }
 }
 
-/* TIME CALCULATION (ACCURATE) */
+/* ACCURATE MINUTES */
 function calculateMinutes(distanceMeters) {
   const km = distanceMeters / 1000;
-  return Math.ceil((km / 30) * 60); // 30 km/h
+  return Math.ceil((km / 30) * 60);
 }
 
 ws.onopen = () => {
@@ -177,17 +176,22 @@ ws.onmessage = e => {
     const dist = getDistance(uLat, uLon, d.lat, d.lon);
     const mins = calculateMinutes(dist);
 
-    if (dist < 20) {
+    if (dist < 20 && !busArrivedAnnounced) {
+      busArrivedAnnounced = true;
       navigator.vibrate([500,500,500]);
-      play("bus_arrived_board.wav", 2);
+      play("bus_arrived_board.wav", 1);
       phase = "destination";
       hint.innerText = "መድረሻዎን ለመናገር ይንኩ።";
       status.innerText = "ባስ ደርሷል";
-    } else if (mins <= 10) {
+    }
+    else if (dist > 50 && mins <= 10 && lastMinuteState !== "below10") {
       play("bus_arrival_below_10.wav");
+      lastMinuteState = "below10";
       status.innerText = "ባስ ከ10 ደቂቃ በታች";
-    } else {
+    }
+    else if (mins > 10 && lastMinuteState !== "above10") {
       play("bus_arrival_above_10.wav");
+      lastMinuteState = "above10";
       status.innerText = "ባስ ከ10 ደቂቃ በላይ";
     }
   }
@@ -221,11 +225,15 @@ function promptDestination() {
             play("unboard.wav", 2);
             status.innerText = "ጉዞ ተጠናቀቀ";
             phase = "complete";
-          } else if (mins <= 10) {
+          }
+          else if (dist > 50 && mins <= 10 && lastMinuteState !== "below10") {
             play("bus_arrival_below_10.wav");
+            lastMinuteState = "below10";
             status.innerText = "መድረሻ ከ10 ደቂቃ በታች";
-          } else {
+          }
+          else if (mins > 10 && lastMinuteState !== "above10") {
             play("bus_arrival_above_10.wav");
+            lastMinuteState = "above10";
             status.innerText = "መድረሻ ከ10 ደቂቃ በላይ";
           }
         }, 15000);
