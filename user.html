@@ -3,38 +3,113 @@
 <head>
   <title>User System</title>
   <style>
-    body {
-      font-family: Arial;
-      background: #e3f2fd;
-      text-align: center;
-      padding: 40px;
+    :root {
+      --bg: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+      --card-bg: #ffffffcc;
+      --primary: #0d47a1;
+      --accent: #00c853;
+      --text: #1f1f1f;
     }
-    button {
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      cursor: pointer; /* whole screen clickable */
+    }
+    .card {
+      width: 100%;
+      max-width: 760px;
+      background: var(--card-bg);
+      backdrop-filter: blur(6px);
+      border-radius: 28px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+      overflow: hidden;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+    .header {
+      padding: 28px;
+      background: linear-gradient(120deg, #1976d2, #00c853);
+      color: #fff;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 36px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .body { padding: 28px; }
+    .cta {
+      display: block;
+      width: 100%;
+      text-align: center;
       font-size: 28px;
-      padding: 30px;
+      padding: 22px;
       background: #1976d2;
       color: white;
       border: none;
       border-radius: 20px;
+      box-shadow: 0 8px 20px rgba(25, 118, 210, 0.35);
+      margin: 8px 0 16px;
+      user-select: none;
+    }
+    .hint {
+      font-size: 18px;
+      color: #2e7d32;
+      background: #e8f5e9;
+      border: 1px solid #c8e6c9;
+      padding: 12px 16px;
+      border-radius: 12px;
     }
     #status {
-      margin-top: 30px;
+      margin-top: 20px;
       font-size: 22px;
       color: #333;
     }
+    .pill {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #bbdefb;
+      color: #0d47a1;
+      font-weight: 600;
+      font-size: 14px;
+    }
   </style>
 </head>
-<body>
+<body onclick="screenTap(event)">
 
-<h1>♿ USER SYSTEM</h1>
-
-<button onclick="start()">TAP TO CALL BUS</button>
-
-<div id="status">Waiting...</div>
+<div class="card">
+  <div class="header">
+    <h1>♿ USER SYSTEM</h1>
+    <div class="pill" id="connection">Connecting…</div>
+  </div>
+  <div class="body">
+    <button class="cta" onclick="start()" aria-label="Tap to call bus">
+      TAP ANYWHERE TO CALL BUS
+    </button>
+    <div class="hint" id="hint">
+      Tap anywhere to speak the bus number. After arrival, tap again to speak destination.
+    </div>
+    <div id="status">Waiting…</div>
+  </div>
+</div>
 
 <script>
 const ws = new WebSocket("wss://blind-transport.onrender.com/");
 const status = document.getElementById("status");
+const hint = document.getElementById("hint");
+
+let phase = "callBus"; // callBus -> awaitBus -> destination -> enRouteDestination
+let uLat, uLon;
+let lastBusLat, lastBusLon;
 
 function speak(text, times = 1) {
   for (let i = 0; i < times; i++) {
@@ -43,11 +118,24 @@ function speak(text, times = 1) {
 }
 
 ws.onopen = () => {
+  document.getElementById("connection").innerText = "Connected";
   ws.send(JSON.stringify({ type: "USER_CONNECT" }));
 };
 
+ws.onclose = () => {
+  document.getElementById("connection").innerText = "Disconnected";
+};
+
+function screenTap(e) {
+  if (phase === "callBus") {
+    start();
+  } else if (phase === "destination") {
+    promptDestination();
+  }
+}
+
 function start() {
-  status.innerText = "Listening for bus number...";
+  status.innerText = "Listening for bus number…";
   speak("Please say the bus number");
 
   const rec = new webkitSpeechRecognition();
@@ -58,10 +146,11 @@ function start() {
     const bus = e.results[0][0].transcript;
     status.innerText = "Bus " + bus + " requested";
     ws.send(JSON.stringify({ type: "BUS_REQUEST", bus }));
+    phase = "awaitBus";
+    hint.innerText = "Awaiting bus. You will hear estimated minutes. The device will vibrate on arrival.";
   };
 }
 
-let uLat, uLon;
 navigator.geolocation.watchPosition(p => {
   uLat = p.coords.latitude;
   uLon = p.coords.longitude;
@@ -71,17 +160,80 @@ ws.onmessage = e => {
   const d = JSON.parse(e.data);
 
   if (d.type === "BUS_GPS") {
-    const dist = getDistance(uLat, uLon, d.lat, d.lon);
-    const mins = Math.ceil(dist / 30 / 60);
+    lastBusLat = d.lat;
+    lastBusLon = d.lon;
+
+    if (uLat == null || uLon == null) return;
+
+    const dist = getDistance(uLat, uLon, d.lat, d.lon); // meters
+    const mins = Math.ceil((dist / 1000) / 30 * 60); // 30 km/h
+
     speak(mins + " minutes left");
     status.innerText = mins + " minutes left";
 
     if (dist < 20) {
-      navigator.vibrate([500,500,500]);
-      speak("Bus has arrived", 4);
+      navigator.vibrate([500, 500, 500]);
+      speak("Bus has arrived", 3);
+      phase = "destination";
+      hint.innerText = "Tap anywhere to speak your destination.";
+      status.innerText = "Bus arrived. Tap to speak destination.";
     }
   }
 };
+
+// NEW: Real geolocation lookup for destination
+function promptDestination() {
+  status.innerText = "Listening for destination…";
+  speak("Please say your destination");
+
+  const rec = new webkitSpeechRecognition();
+  rec.lang = "en-US";
+  rec.start();
+
+  rec.onresult = e => {
+    const phrase = e.results[0][0].transcript.trim();
+    status.innerText = "Destination: " + phrase;
+    hint.innerText = "Calculating route…";
+
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(phrase)}`)
+      .then(res => res.json())
+      .then(results => {
+        if (results.length === 0) {
+          speak("Destination not found");
+          status.innerText = "Destination not found";
+          return;
+        }
+
+        const destLat = parseFloat(results[0].lat);
+        const destLon = parseFloat(results[0].lon);
+
+        const dist = getDistance(lastBusLat, lastBusLon, destLat, destLon); // meters
+        const minutes = Math.ceil((dist / 1000) / 30 * 60);
+
+        speak(minutes + " minutes to destination");
+        status.innerText = minutes + " minutes to destination";
+
+        phase = "enRouteDestination";
+        hint.innerText = "En route to destination. You will be notified on arrival.";
+
+        const checkArrival = setInterval(() => {
+          if (!lastBusLat || !lastBusLon) return;
+          const d = getDistance(lastBusLat, lastBusLon, destLat, destLon);
+          if (d < 20) {
+            clearInterval(checkArrival);
+            speak("Bus has arrived, please unboard", 3);
+            status.innerText = "Bus has arrived. Please unboard.";
+            hint.innerText = "Trip complete.";
+            phase = "complete";
+          }
+        }, 5000);
+      })
+      .catch(err => {
+        speak("Error finding destination");
+        status.innerText = "Error finding destination";
+      });
+  };
+}
 
 function getDistance(a,b,c,d) {
   const R=6371000;
