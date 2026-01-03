@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<html>
+<html lang="am">
 <head>
-  <title>User System</title>
+  <title>የተጠቃሚ ስርዓት</title>
   <style>
     :root {
       --bg: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
@@ -21,7 +21,7 @@
       align-items: center;
       justify-content: center;
       padding: 24px;
-      cursor: pointer; /* whole screen clickable */
+      cursor: pointer;
     }
     .card {
       width: 100%;
@@ -56,7 +56,7 @@
       color: white;
       border: none;
       border-radius: 20px;
-      box-shadow: 0 8px 20px rgba(25, 118, 210, 0.35);
+      box-shadow: 0 8px 20px rgba(25,118,210,0.35);
       margin: 8px 0 16px;
       user-select: none;
     }
@@ -84,21 +84,22 @@
     }
   </style>
 </head>
-<body onclick="screenTap(event)">
+
+<body onclick="screenTap()">
 
 <div class="card">
   <div class="header">
-    <h1>♿ USER SYSTEM</h1>
-    <div class="pill" id="connection">Connecting…</div>
+    <h1>♿ የተጠቃሚ ስርዓት</h1>
+    <div class="pill" id="connection">በመገናኘት ላይ…</div>
   </div>
   <div class="body">
-    <button class="cta" onclick="start()" aria-label="Tap to call bus">
-      TAP ANYWHERE TO CALL BUS
+    <button class="cta" onclick="start()">
+      ባስ ለመጥራት የትኛውንም ቦታ ይንኩ
     </button>
     <div class="hint" id="hint">
-      Tap anywhere to speak the bus number. After arrival, tap again to speak destination.
+      የባስ ቁጥር ለመናገር ይንኩ። ባስ ሲደርስ መድረሻዎን ለመናገር ዳግም ይንኩ።
     </div>
-    <div id="status">Waiting…</div>
+    <div id="status">በመጠባበቅ ላይ…</div>
   </div>
 </div>
 
@@ -107,47 +108,63 @@ const ws = new WebSocket("wss://blind-transport.onrender.com/");
 const status = document.getElementById("status");
 const hint = document.getElementById("hint");
 
-let phase = "callBus"; // callBus -> awaitBus -> destination -> enRouteDestination
+let phase = "callBus";
 let uLat, uLon;
 let lastBusLat, lastBusLon;
 
-function speak(text, times = 1) {
+/* AUDIO PLAYER */
+function play(file, times = 1) {
   for (let i = 0; i < times; i++) {
-    speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    new Audio(file).play();
   }
 }
 
+/* FARE CALCULATION */
+function calculateFare(distanceMeters) {
+  const km = Math.ceil(distanceMeters / 1000);
+  let fare = km * 10;
+
+  if (fare <= 10) {
+    play("money1.wav");
+    return 10;
+  }
+  if (fare <= 20) {
+    play("money2.wav");
+    return 20;
+  }
+  play("money3.wav");
+  return 30;
+}
+
 ws.onopen = () => {
-  document.getElementById("connection").innerText = "Connected";
+  document.getElementById("connection").innerText = "ተገናኝቷል";
   ws.send(JSON.stringify({ type: "USER_CONNECT" }));
 };
 
 ws.onclose = () => {
-  document.getElementById("connection").innerText = "Disconnected";
+  document.getElementById("connection").innerText = "ግንኙነት ተቋርጧል";
 };
 
-function screenTap(e) {
-  if (phase === "callBus") {
-    start();
-  } else if (phase === "destination") {
-    promptDestination();
-  }
+function screenTap() {
+  if (phase === "callBus") start();
+  else if (phase === "destination") promptDestination();
 }
 
 function start() {
-  status.innerText = "Listening for bus number…";
-  speak("Please say the bus number");
+  status.innerText = "የባስ ቁጥር እየተሰማ…";
+  play("enter_bus_number.wav");
 
   const rec = new webkitSpeechRecognition();
-  rec.lang = "en-US";
+  rec.lang = "am-ET";
   rec.start();
 
   rec.onresult = e => {
     const bus = e.results[0][0].transcript;
-    status.innerText = "Bus " + bus + " requested";
+    status.innerText = "ባስ " + bus + " ተጠርቷል";
     ws.send(JSON.stringify({ type: "BUS_REQUEST", bus }));
+    play("request_sent.wav");
     phase = "awaitBus";
-    hint.innerText = "Awaiting bus. You will hear estimated minutes. The device will vibrate on arrival.";
+    hint.innerText = "ባስ በመጠባበቅ ላይ። ጊዜው በድምፅ ይነገራል።";
   };
 }
 
@@ -162,75 +179,59 @@ ws.onmessage = e => {
   if (d.type === "BUS_GPS") {
     lastBusLat = d.lat;
     lastBusLon = d.lon;
-
     if (uLat == null || uLon == null) return;
 
-    const dist = getDistance(uLat, uLon, d.lat, d.lon); // meters
-    const mins = Math.ceil((dist / 1000) / 30 * 60); // 30 km/h
-
-    speak(mins + " minutes left");
-    status.innerText = mins + " minutes left";
+    const dist = getDistance(uLat, uLon, d.lat, d.lon);
 
     if (dist < 20) {
-      navigator.vibrate([500, 500, 500]);
-      speak("Bus has arrived", 3);
+      navigator.vibrate([500,500,500]);
+      play("bus_arrived_board.wav", 2);
       phase = "destination";
-      hint.innerText = "Tap anywhere to speak your destination.";
-      status.innerText = "Bus arrived. Tap to speak destination.";
+      hint.innerText = "መድረሻዎን ለመናገር ይንኩ።";
+      status.innerText = "ባስ ደርሷል";
+    } else if (dist < 10000) {
+      play("bus_arrival_below_10.wav");
+    } else {
+      play("bus_arrival_above_10.wav");
     }
   }
 };
 
-// NEW: Real geolocation lookup for destination
 function promptDestination() {
-  status.innerText = "Listening for destination…";
-  speak("Please say your destination");
+  status.innerText = "መድረሻ እየተሰማ…";
+  play("enter_destination.wav");
 
   const rec = new webkitSpeechRecognition();
-  rec.lang = "en-US";
+  rec.lang = "am-ET";
   rec.start();
 
   rec.onresult = e => {
     const phrase = e.results[0][0].transcript.trim();
-    status.innerText = "Destination: " + phrase;
-    hint.innerText = "Calculating route…";
+    status.innerText = "መድረሻ፦ " + phrase;
 
     fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(phrase)}`)
       .then(res => res.json())
       .then(results => {
-        if (results.length === 0) {
-          speak("Destination not found");
-          status.innerText = "Destination not found";
-          return;
-        }
+        if (!results.length) return;
 
         const destLat = parseFloat(results[0].lat);
         const destLon = parseFloat(results[0].lon);
 
-        const dist = getDistance(lastBusLat, lastBusLon, destLat, destLon); // meters
-        const minutes = Math.ceil((dist / 1000) / 30 * 60);
+        const dist = getDistance(lastBusLat, lastBusLon, destLat, destLon);
+        const fare = calculateFare(dist);
 
-        speak(minutes + " minutes to destination");
-        status.innerText = minutes + " minutes to destination";
-
-        phase = "enRouteDestination";
-        hint.innerText = "En route to destination. You will be notified on arrival.";
+        status.innerText = `ክፍያ፦ ${fare} ብር`;
 
         const checkArrival = setInterval(() => {
-          if (!lastBusLat || !lastBusLon) return;
           const d = getDistance(lastBusLat, lastBusLon, destLat, destLon);
           if (d < 20) {
             clearInterval(checkArrival);
-            speak("Bus has arrived, please unboard", 3);
-            status.innerText = "Bus has arrived. Please unboard.";
-            hint.innerText = "Trip complete.";
+            play("unboard.wav", 2);
+            status.innerText = "ጉዞ ተጠናቀቀ";
+            hint.innerText = "ጉዞዎ ተጠናቀቀ";
             phase = "complete";
           }
         }, 5000);
-      })
-      .catch(err => {
-        speak("Error finding destination");
-        status.innerText = "Error finding destination";
       });
   };
 }
