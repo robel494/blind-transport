@@ -65,10 +65,13 @@ let lastMinuteState = null;
 let enteredBusNumber = "";
 let enteredDestination = "";
 
-function play(file, times = 1) {
-  for (let i = 0; i < times; i++) {
-    new Audio(file).play();
-  }
+// --- Play audio and return Promise resolved when finished ---
+function play(file) {
+  return new Promise(resolve => {
+    const audio = new Audio(file);
+    audio.onended = resolve;
+    audio.play();
+  });
 }
 
 function calculateMinutes(distanceMeters) {
@@ -99,10 +102,14 @@ function screenTap() {
   else if (phase === "destination") promptDestination();
 }
 
-function start() {
+// --- START FUNCTION ---
+async function start() {
   status.innerText = "የባስ ቁጥር እየተሰማ…";
-  play("enter_bus_number.wav");
+  await play("enter_bus_number.wav"); // wait for voice to finish
+  startRecordingBusNumber();
+}
 
+function startRecordingBusNumber() {
   const rec = new webkitSpeechRecognition();
   rec.lang = "am-ET";
   rec.start();
@@ -157,11 +164,14 @@ ws.onmessage = e => {
   }
 };
 
-// --- SIMPLIFIED DESTINATION COUNTDOWN ---
-function promptDestination() {
+// --- DESTINATION FUNCTION ---
+async function promptDestination() {
   status.innerText = "መድረሻ እየተሰማ…";
-  play("enter_destination.wav");
+  await play("enter_destination.wav"); // wait for voice to finish
+  startRecordingDestination();
+}
 
+function startRecordingDestination() {
   const rec = new webkitSpeechRecognition();
   rec.lang = "am-ET";
   rec.start();
@@ -182,9 +192,10 @@ function promptDestination() {
         let minsLeft = calculateMinutes(distMeters);
         const km = distMeters / 1000;
         const tariff = Math.ceil(km*10); // 10 birr per km
-        play("pay_tariff.wav"); // this should announce XX birr if you implement TTS variable
+        play("pay_tariff.wav"); // announce tariff
         status.innerText = `ክፍያ: ${tariff} ብር`;
 
+        // Countdown every 1 min until arrival
         const countdown = setInterval(() => {
           if (minsLeft <= 0) {
             clearInterval(countdown);
@@ -196,7 +207,7 @@ function promptDestination() {
             minsLeft--;
             status.innerText = `መድረሻ ለ${enteredDestination}: ${minsLeft} ደቂቃ ቀሪ ነው`;
           }
-        }, 60000); // countdown every 1 minute
+        }, 60000);
       });
   };
 }
