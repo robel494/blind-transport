@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="am">
 <head>
-  <title>የተጠቃሚ ስርዓት</title>
+  <title>የባስ ስርዓት</title>
   <style>
     :root {
       --bg: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
@@ -41,12 +41,8 @@
     <div class="pill" id="connection">በመገናኘት ላይ…</div>
   </div>
   <div class="body">
-    <button class="cta">
-      ባስ ለመጥራት የትኛውንም ቦታ ይንኩ
-    </button>
-    <div class="hint" id="hint">
-      የትኛውንም ቦታ ይንኩ ለመጀመር
-    </div>
+    <button class="cta">ባስ ለመጥራት የትኛውንም ቦታ ይንኩ</button>
+    <div class="hint" id="hint">የትኛውንም ቦታ ይንኩ ለመጀመር</div>
     <div id="status">በመጠባበቅ ላይ…</div>
   </div>
 </div>
@@ -60,12 +56,13 @@ let phase = "callBus";
 let uLat, uLon;
 let lastBusLat, lastBusLon;
 let busArrivedAnnounced = false;
-let lastMinuteState = null;
+let lastMinuteStateBus = null;
+let lastMinuteStateDest = null;
 
 let enteredBusNumber = "";
 let enteredDestination = "";
 
-// --- Play audio and return Promise resolved when finished ---
+// --- PLAY AUDIO PROMISE ---
 function play(file) {
   return new Promise(resolve => {
     const audio = new Audio(file);
@@ -74,17 +71,27 @@ function play(file) {
   });
 }
 
-function calculateMinutes(distanceMeters) {
-  const km = distanceMeters / 1000;
-  return Math.ceil((km / 30) * 60);
-}
-
+// --- CALCULATE DISTANCE ---
 function getDistance(a,b,c,d) {
   const R = 6371000;
   const x = (c-a)*Math.PI/180;
   const y = (d-b)*Math.PI/180;
-  const k = Math.sin(x/2)**2 + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180) * Math.sin(y/2)**2;
-  return R*2*Math.atan2(Math.sqrt(k),Math.sqrt(1-k));
+  const k = Math.sin(x/2)**2 + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;
+  return R*2*Math.atan2(Math.sqrt(k), Math.sqrt(1-k));
+}
+
+// --- CALCULATE MINUTES ---
+function calculateMinutes(distanceMeters) {
+  const km = distanceMeters/1000;
+  return Math.ceil((km/30)*60);
+}
+
+// --- ROUND TARIFF ---
+function calcTariff(distanceMeters) {
+  let birr = Math.ceil(distanceMeters/1000*10);
+  if (birr <= 15) return 15;
+  if (birr <= 25) return 25;
+  return 30;
 }
 
 ws.onopen = () => {
@@ -93,19 +100,19 @@ ws.onopen = () => {
 };
 
 ws.onclose = () => {
-  document.getElementById("connection").innerText = "ግንኙነት ተቋርጧል";
+  document.getElementById("connection").innerText = "ተቋርጧል";
 };
 
 function screenTap() {
-  if (phase === "callBus") start();
+  if (phase === "callBus") startBusNumber();
   else if (phase === "destination") promptDestination();
 }
 
-// --- START FUNCTION ---
-async function start() {
+// --- START BUS NUMBER ---
+async function startBusNumber() {
   status.innerText = "የባስ ቁጥር እየተሰማ…";
-  await play("enter_bus_number.wav"); // wait for voice to finish
-  setTimeout(() => startRecordingBusNumber(), 4000); // start recording after 4s delay
+  await play("enter_bus_number.wav");
+  startRecordingBusNumber();
 }
 
 function startRecordingBusNumber() {
@@ -138,36 +145,34 @@ ws.onmessage = e => {
     const dist = getDistance(uLat, uLon, d.lat, d.lon);
     const mins = calculateMinutes(dist);
 
+    // --- BUS ARRIVAL ---
     if (dist < 20 && !busArrivedAnnounced) {
       busArrivedAnnounced = true;
-      navigator.vibrate([500,500,500]);
-      play("bus_arrived_board.wav", 1);
+      navigator.vibrate([500]);
+      play("bus_arrived_board.wav");
       phase = "destination";
       hint.innerText = "መድረሻዎን ለመናገር ይንኩ።";
       status.innerText = "ባስ ደርሷል";
     }
-    else if (dist > 50 && mins <= 10 && lastMinuteState !== "below10") {
+
+    // --- UNDER / ABOVE 10 MIN BUS ---
+    if (dist > 50 && mins <= 10 && lastMinuteStateBus !== "below10") {
       play("bus_arrival_below_10.wav");
-      lastMinuteState = "below10";
-    }
-    else if (mins > 10 && lastMinuteState !== "above10") {
+      lastMinuteStateBus = "below10";
+    } else if (mins > 10 && lastMinuteStateBus !== "above10") {
       play("bus_arrival_above_10.wav");
-      lastMinuteState = "above10";
+      lastMinuteStateBus = "above10";
     }
 
-    if (dist >= 20) {
-      setTimeout(() => {
-        status.innerText = `ባስ ለመድረሻ: ${mins} ደቂቃ ቀሪ ነው`;
-      }, 3000);
-    }
+    status.innerText = `ባስ ለመድረሻ: ${mins} ደቂቃ ቀሪ ነው`;
   }
 };
 
-// --- DESTINATION FUNCTION ---
+// --- DESTINATION ---
 async function promptDestination() {
   status.innerText = "መድረሻ እየተሰማ…";
-  await play("enter_destination.wav"); // wait for voice to finish
-  setTimeout(() => startRecordingDestination(), 4000); // 4 sec delay before recording
+  await play("enter_destination.wav");
+  startRecordingDestination();
 }
 
 function startRecordingDestination() {
@@ -189,17 +194,30 @@ function startRecordingDestination() {
 
         const distMeters = getDistance(lastBusLat, lastBusLon, destLat, destLon);
         let minsLeft = calculateMinutes(distMeters);
-        const km = distMeters / 1000;
-        const tariff = Math.ceil(km*10); // 10 birr per km
-        play("pay_tariff.wav"); // announce tariff
-        status.innerText = `ክፍያ: ${tariff} ብር`;
+        const tariff = calcTariff(distMeters);
 
-        // Countdown every 1 min until arrival
+        // --- TARFF AUDIO ---
+        if (tariff === 15) play("money1.5.wav");
+        else if (tariff === 25) play("money2.5.wav");
+        else play("money3.wav");
+
+        // --- UNDER / ABOVE 10 MIN DESTINATION ---
+        if (minsLeft <= 10 && lastMinuteStateDest !== "below10") {
+          play("bus_arrival_below_10.wav");
+          lastMinuteStateDest = "below10";
+        } else if (minsLeft > 10 && lastMinuteStateDest !== "above10") {
+          play("bus_arrival_above_10.wav");
+          lastMinuteStateDest = "above10";
+        }
+
+        status.innerText = `መድረሻ ለ${enteredDestination}: ${minsLeft} ደቂቃ ቀሪ ነው`;
+
+        // Countdown every minute
         const countdown = setInterval(() => {
           if (minsLeft <= 0) {
             clearInterval(countdown);
-            navigator.vibrate([500,500,500]);
-            play("unboard.wav", 2);
+            navigator.vibrate([500]);
+            play("unboard.wav");
             status.innerText = "ጉዞ ተጠናቀቀ";
             phase = "complete";
           } else {
