@@ -144,7 +144,6 @@ ws.onopen = () => {
 ws.onerror = () => conn.innerText = "ስህተት";
 ws.onclose = () => conn.innerText = "ተቋርጧል";
 
-/* keep server awake */
 setInterval(() => {
   if (ws.readyState === 1) ws.send(JSON.stringify({ type:"PING" }));
 }, 30000);
@@ -164,14 +163,9 @@ async function startBusNumber() {
 }
 
 function startRecordingBus() {
-  if (!('webkitSpeechRecognition' in window)) {
-    alert("Chrome ያስፈልጋል");
-    return;
-  }
   const rec = new webkitSpeechRecognition();
   rec.lang = "am-ET";
   rec.start();
-
   rec.onresult = e => {
     enteredBusNumber = e.results[0][0].transcript;
     status.innerText = `ባስ ቁጥር: ${enteredBusNumber}`;
@@ -195,12 +189,20 @@ ws.onmessage = async e => {
 
   status.innerText = `ባስ በ${mins} ደቂቃ ይደርሳል`;
 
+  /* 🔔 BUS ARRIVAL ALERT */
   if (dist < 20 && !busArrivedAnnounced) {
     busArrivedAnnounced = true;
-    navigator.vibrate([500,500,500]);
+
+    // STRONG VIBRATION PATTERN
+    if (navigator.vibrate) {
+      navigator.vibrate([800, 300, 800, 300, 800]);
+    }
+
     await play("bus_arrived_board.wav");
+
     phase = "destination";
     hint.innerText = "መድረሻዎን ይናገሩ";
+    status.innerText = "ባስ ደርሷል";
   }
 };
 
@@ -236,7 +238,7 @@ function startRecordingDestination() {
     const timer = setInterval(async () => {
       if (minsLeft <= 0) {
         clearInterval(timer);
-        navigator.vibrate([500,500,500]);
+        if (navigator.vibrate) navigator.vibrate([600,300,600]);
         await play("unboard.wav");
         status.innerText = "ጉዞ ተጠናቀቀ";
         phase = "complete";
