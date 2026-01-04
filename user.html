@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="am">
 <head>
@@ -37,7 +38,7 @@
 
 <div class="card">
   <div class="header">
-    <h1>♿ የተጠቃሚ ስርዓት</h1>
+    <h1>♿️ የተጠቃሚ ስርዓት</h1>
     <div class="pill" id="connection">በመገናኘት ላይ…</div>
   </div>
   <div class="body">
@@ -76,7 +77,7 @@ function getDistance(a,b,c,d) {
   const R = 6371000;
   const x = (c-a)*Math.PI/180;
   const y = (d-b)*Math.PI/180;
-  const k = Math.sin(x/2)2 + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)2;
+  const k = Math.sin(x/2)**2 + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;
   return R*2*Math.atan2(Math.sqrt(k), Math.sqrt(1-k));
 }
 function calculateMinutes(distanceMeters) { return Math.ceil((distanceMeters/1000)/30*60); }
@@ -119,6 +120,7 @@ function startRecordingBusNumber() {
     hint.innerText = "ባስ በመጠባበቅ ላይ…";
   };
 }
+
 navigator.geolocation.watchPosition(p => { uLat = p.coords.latitude; uLon = p.coords.longitude; });
 
 ws.onmessage = async e => {
@@ -217,4 +219,3 @@ function startRecordingDestination() {
 </script>
 </body>
 </html>
-
