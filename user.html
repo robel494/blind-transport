@@ -31,57 +31,24 @@
       border-radius: 28px;
       box-shadow: 0 12px 32px rgba(0,0,0,0.15);
       overflow: hidden;
-      border: 1px solid rgba(0,0,0,0.06);
     }
     .header {
       padding: 28px;
       background: linear-gradient(120deg, #1976d2, #00c853);
       color: #fff;
     }
-    .header h1 {
-      margin: 0;
-      font-size: 36px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
     .body { padding: 28px; }
     .cta {
-      display: block;
       width: 100%;
-      text-align: center;
       font-size: 28px;
       padding: 22px;
       background: #1976d2;
       color: white;
-      border: none;
       border-radius: 20px;
-      box-shadow: 0 8px 20px rgba(25,118,210,0.35);
-      margin: 8px 0 16px;
-      user-select: none;
+      border: none;
     }
-    .hint {
-      font-size: 18px;
-      color: #2e7d32;
-      background: #e8f5e9;
-      border: 1px solid #c8e6c9;
-      padding: 12px 16px;
-      border-radius: 12px;
-    }
-    #status {
-      margin-top: 20px;
-      font-size: 22px;
-      color: #333;
-    }
-    .pill {
-      display: inline-block;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: #bbdefb;
-      color: #0d47a1;
-      font-weight: 600;
-      font-size: 14px;
-    }
+    .hint { font-size: 18px; margin-top: 12px; }
+    #status { margin-top: 20px; font-size: 22px; }
   </style>
 </head>
 
@@ -90,11 +57,11 @@
 <div class="card">
   <div class="header">
     <h1>♿ የተጠቃሚ ስርዓት</h1>
-    <div class="pill" id="connection">በመገናኘት ላይ…</div>
+    <div id="connection">በመገናኘት ላይ…</div>
   </div>
   <div class="body">
-    <button class="cta">ባስ ለመጥራት የትኛውንም ቦታ ይንኩ</button>
-    <div class="hint" id="hint">የትኛውንም ቦታ ይንኩ ለመጀመር</div>
+    <button class="cta">ባስ ለመጥራት ይንኩ</button>
+    <div class="hint" id="hint">ይንኩ ለመጀመር</div>
     <div id="status">በመጠባበቅ ላይ…</div>
   </div>
 </div>
@@ -108,83 +75,54 @@ let phase = "callBus";
 let uLat, uLon;
 let lastBusLat, lastBusLon;
 
-let busArrivedAnnounced = false;
-let suppressBusInfo = false;
+let busArrived = false;
+let destinationSet = false;
 
-let lastMinuteStateBus = null;
-let lastMinuteStateDest = null;
-
-let enteredBusNumber = "";
-let enteredDestination = "";
-
-// -------- AUDIO (SERIALIZED) --------
+// -------- AUDIO LOCK --------
 let audioBusy = false;
 function play(file) {
   return new Promise(async resolve => {
-    while (audioBusy) {
-      await new Promise(r => setTimeout(r, 50));
-    }
+    while (audioBusy) await new Promise(r => setTimeout(r, 50));
     audioBusy = true;
-    const audio = new Audio(file);
-    audio.onended = () => {
-      audioBusy = false;
-      resolve();
-    };
-    audio.play();
+    const a = new Audio(file);
+    a.onended = () => { audioBusy = false; resolve(); };
+    a.play();
   });
 }
 
-// -------- DISTANCE & TIME --------
+// -------- HELPERS --------
 function getDistance(a,b,c,d) {
   const R = 6371000;
   const x = (c-a)*Math.PI/180;
   const y = (d-b)*Math.PI/180;
   const k = Math.sin(x/2)**2 +
-            Math.cos(a*Math.PI/180) *
-            Math.cos(c*Math.PI/180) *
-            Math.sin(y/2)**2;
+    Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(k), Math.sqrt(1-k));
 }
 function calculateMinutes(d) {
   return Math.ceil((d / 1000) / 30 * 60);
 }
 function calcTariff(d) {
-  let birr = Math.ceil(d / 1000 * 10);
-  if (birr <= 15) return 15;
-  if (birr <= 25) return 25;
+  let b = Math.ceil(d / 1000 * 10);
+  if (b <= 15) return 15;
+  if (b <= 25) return 25;
   return 30;
 }
 
-// -------- WS --------
-ws.onopen = () => {
-  document.getElementById("connection").innerText = "ተገናኝቷል";
-  ws.send(JSON.stringify({ type: "USER_CONNECT" }));
-};
-ws.onclose = () => {
-  document.getElementById("connection").innerText = "ተቋርጧል";
-};
-
 // -------- TAP --------
 function screenTap() {
-  if (phase === "callBus") startBusNumber();
-  else if (phase === "destination") promptDestination();
+  if (phase === "callBus") startBus();
+  else if (phase === "destination") askDestination();
 }
 
 // -------- BUS NUMBER --------
-async function startBusNumber() {
-  status.innerText = "የባስ ቁጥር እየተሰማ…";
+async function startBus() {
   await play("enter_bus_number.wav");
-  startRecordingBusNumber();
-}
-
-function startRecordingBusNumber() {
   const rec = new webkitSpeechRecognition();
   rec.lang = "am-ET";
   rec.start();
   rec.onresult = e => {
-    enteredBusNumber = e.results[0][0].transcript;
-    status.innerText = `ባስ ቁጥር: ${enteredBusNumber} ተጠቅመዋል`;
-    ws.send(JSON.stringify({ type: "BUS_REQUEST", bus: enteredBusNumber }));
+    ws.send(JSON.stringify({ type:"BUS_REQUEST", bus:e.results[0][0].transcript }));
     play("request_sent.wav");
     phase = "awaitBus";
     hint.innerText = "ባስ በመጠባበቅ ላይ…";
@@ -204,91 +142,55 @@ ws.onmessage = async e => {
 
   lastBusLat = d.lat;
   lastBusLon = d.lon;
-  if (!uLat || !uLon) return;
+
+  if (!uLat || !uLon || busArrived) return;
 
   const dist = getDistance(uLat, uLon, d.lat, d.lon);
-  const mins = calculateMinutes(dist);
 
-  // BUS ARRIVED
-  if (dist < 20 && !busArrivedAnnounced) {
-    busArrivedAnnounced = true;
-    suppressBusInfo = true;
-
+  if (dist < 20) {
+    busArrived = true;
     navigator.vibrate([500,500,500]);
     await play("bus_arrived_board.wav");
-
     phase = "destination";
-    hint.innerText = "መድረሻዎን ለመናገር ይንኩ።";
+    hint.innerText = "መድረሻ ለመናገር ይንኩ";
     status.innerText = "ባስ ደርሷል";
-    return;
   }
-
-  // MINUTES + TARIFF (ONLY BEFORE ARRIVAL)
-  if (dist > 50 && !suppressBusInfo) {
-    if (mins <= 10 && lastMinuteStateBus !== "below10") {
-      lastMinuteStateBus = "below10";
-      await play("bus_arrival_below_10.wav");
-    } else if (mins > 10 && lastMinuteStateBus !== "above10") {
-      lastMinuteStateBus = "above10";
-      await play("bus_arrival_above_10.wav");
-    }
-
-    const tariff = calcTariff(dist);
-    if (tariff === 15) await play("money1.5.wav");
-    else if (tariff === 25) await play("money2.5.wav");
-    else await play("money3.wav");
-  }
-
-  status.innerText = `ባስ ለመድረሻ: ${mins} ደቂቃ ቀሪ ነው`;
 };
 
 // -------- DESTINATION --------
-async function promptDestination() {
-  status.innerText = "መድረሻ እየተሰማ…";
+async function askDestination() {
   await play("enter_destination.wav");
-  startRecordingDestination();
-}
-
-function startRecordingDestination() {
   const rec = new webkitSpeechRecognition();
   rec.lang = "am-ET";
   rec.start();
+
   rec.onresult = async e => {
-    enteredDestination = e.results[0][0].transcript.trim();
-    status.innerText = `መድረሻ: ${enteredDestination}`;
+    destinationSet = true;
+    const dest = e.results[0][0].transcript;
 
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(enteredDestination)}`
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(dest)}`
     );
     const data = await res.json();
     if (!data.length) return;
 
-    const destLat = parseFloat(data[0].lat);
-    const destLon = parseFloat(data[0].lon);
+    const dist = getDistance(
+      lastBusLat, lastBusLon,
+      parseFloat(data[0].lat), parseFloat(data[0].lon)
+    );
 
-    const dist = getDistance(lastBusLat, lastBusLon, destLat, destLon);
-    let minsLeft = calculateMinutes(dist);
+    const mins = calculateMinutes(dist);
 
-    if (minsLeft <= 10) await play("bus_arrival_below_10.wav");
+    // 🔊 NOW AND ONLY NOW → minutes → birr
+    if (mins <= 10) await play("bus_arrival_below_10.wav");
     else await play("bus_arrival_above_10.wav");
 
-    const tariff = calcTariff(dist);
-    if (tariff === 15) await play("money1.5.wav");
-    else if (tariff === 25) await play("money2.5.wav");
+    const t = calcTariff(dist);
+    if (t === 15) await play("money1.5.wav");
+    else if (t === 25) await play("money2.5.wav");
     else await play("money3.wav");
 
-    const countdown = setInterval(async () => {
-      if (minsLeft <= 0) {
-        clearInterval(countdown);
-        navigator.vibrate([500,500,500]);
-        await play("unboard.wav");
-        status.innerText = "ጉዞ ተጠናቀቀ";
-        phase = "complete";
-      } else {
-        minsLeft--;
-        status.innerText = `መድረሻ ለ${enteredDestination}: ${minsLeft} ደቂቃ ቀሪ ነው`;
-      }
-    }, 60000);
+    status.innerText = `መድረሻ: ${mins} ደቂቃ`;
   };
 }
 </script>
