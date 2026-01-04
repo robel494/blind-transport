@@ -1,3 +1,124 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+  <title>የባስ ስርዓት</title>
+  <style>
+    :root {
+      --bg: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+      --card-bg: #ffffffcc;
+      --primary: #0d47a1;
+      --accent: #00c853;
+      --text: #1f1f1f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      cursor: pointer;
+    }
+    .card { width: 100%; max-width: 760px; background: var(--card-bg); backdrop-filter: blur(6px); border-radius: 28px; box-shadow: 0 12px 32px rgba(0,0,0,0.15); overflow: hidden; border: 1px solid rgba(0,0,0,0.06);}
+    .header {padding: 28px; background: linear-gradient(120deg, #1976d2, #00c853); color: #fff;}
+    .header h1 { margin: 0; font-size: 36px; display: flex; align-items: center; gap: 12px; }
+    .body { padding: 28px; }
+    .cta { display: block; width: 100%; text-align: center; font-size: 28px; padding: 22px; background: #1976d2; color: white; border: none; border-radius: 20px; box-shadow: 0 8px 20px rgba(25,118,210,0.35); margin: 8px 0 16px; user-select: none;}
+    .hint { font-size: 18px; color: #2e7d32; background: #e8f5e9; border: 1px solid #c8e6c9; padding: 12px 16px; border-radius: 12px;}
+    #status { margin-top: 20px; font-size: 22px; color: #333;}
+    .pill { display: inline-block; padding: 8px 12px; border-radius: 999px; background: #bbdefb; color: #0d47a1; font-weight: 600; font-size: 14px;}
+  </style>
+</head>
+<body onclick="screenTap()">
+
+<div class="card">
+  <div class="header">
+    <h1>♿ የተጠቃሚ ስርዓት</h1>
+    <div class="pill" id="connection">በመገናኘት ላይ…</div>
+  </div>
+  <div class="body">
+    <button class="cta">ባስ ለመጥራት የትኛውንም ቦታ ይንኩ</button>
+    <div class="hint" id="hint">የትኛውንም ቦታ ይንኩ ለመጀመር</div>
+    <div id="status">በመጠባበቅ ላይ…</div>
+  </div>
+</div>
+
+<script>
+const ws = new WebSocket("wss://blind-transport.onrender.com/");
+const status = document.getElementById("status");
+const hint = document.getElementById("hint");
+
+let phase = "callBus";
+let uLat, uLon;
+let lastBusLat, lastBusLon;
+let busArrivedAnnounced = false;
+let lastMinuteStateBus = null;
+let lastMinuteStateDest = null;
+
+let enteredBusNumber = "";
+let enteredDestination = "";
+
+// --- AUDIO PROMISE ---
+function play(file) {
+  return new Promise(resolve => {
+    const audio = new Audio(file);
+    audio.onended = resolve;
+    audio.play();
+  });
+}
+
+// --- DISTANCE & TIME CALC ---
+function getDistance(a,b,c,d) {
+  const R = 6371000;
+  const x = (c-a)*Math.PI/180;
+  const y = (d-b)*Math.PI/180;
+  const k = Math.sin(x/2)2 + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)2;
+  return R*2*Math.atan2(Math.sqrt(k), Math.sqrt(1-k));
+}
+function calculateMinutes(distanceMeters) { return Math.ceil((distanceMeters/1000)/30*60); }
+function calcTariff(distanceMeters) {
+  let birr = Math.ceil(distanceMeters/1000*10);
+  if (birr <= 15) return 15;
+  if (birr <= 25) return 25;
+  return 30;
+}
+
+// --- WS CONNECTION ---
+ws.onopen = () => {
+  document.getElementById("connection").innerText = "ተገናኝቷል";
+  ws.send(JSON.stringify({ type: "USER_CONNECT" }));
+};
+ws.onclose = () => { document.getElementById("connection").innerText = "ተቋርጧል"; };
+
+// --- SCREEN TAP ---
+function screenTap() {
+  if (phase === "callBus") startBusNumber();
+  else if (phase === "destination") promptDestination();
+}
+
+// --- BUS NUMBER ---
+async function startBusNumber() {
+  status.innerText = "የባስ ቁጥር እየተሰማ…";
+  await play("enter_bus_number.wav");
+  startRecordingBusNumber();
+}
+function startRecordingBusNumber() {
+  const rec = new webkitSpeechRecognition();
+  rec.lang = "am-ET";
+  rec.start();
+  rec.onresult = e => {
+    enteredBusNumber = e.results[0][0].transcript;
+    status.innerText = ባስ ቁጥር: ${enteredBusNumber} ተጠቅመዋል;
+    ws.send(JSON.stringify({ type: "BUS_REQUEST", bus: enteredBusNumber }));
+    play("request_sent.wav");
+    phase = "awaitBus";
+    hint.innerText = "ባስ በመጠባበቅ ላይ…";
+  };
+}
 navigator.geolocation.watchPosition(p => { uLat = p.coords.latitude; uLon = p.coords.longitude; });
 
 ws.onmessage = async e => {
@@ -96,3 +217,4 @@ function startRecordingDestination() {
 </script>
 </body>
 </html>
+
