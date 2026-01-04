@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="am">
 <head>
-  <title>User System</title>
+  <meta charset="UTF-8">
+  <title>የባስ ስርዓት</title>
+
   <style>
     :root {
       --bg: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
@@ -15,23 +17,20 @@
       margin: 0;
       font-family: "Segoe UI", Arial, sans-serif;
       background: var(--bg);
-      color: var(--text);
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 24px;
-      cursor: pointer; /* whole screen clickable */
+      cursor: pointer;
     }
     .card {
       width: 100%;
       max-width: 760px;
       background: var(--card-bg);
-      backdrop-filter: blur(6px);
       border-radius: 28px;
       box-shadow: 0 12px 32px rgba(0,0,0,0.15);
       overflow: hidden;
-      border: 1px solid rgba(0,0,0,0.06);
     }
     .header {
       padding: 28px;
@@ -40,40 +39,10 @@
     }
     .header h1 {
       margin: 0;
-      font-size: 36px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .body { padding: 28px; }
-    .cta {
-      display: block;
-      width: 100%;
-      text-align: center;
-      font-size: 28px;
-      padding: 22px;
-      background: #1976d2;
-      color: white;
-      border: none;
-      border-radius: 20px;
-      box-shadow: 0 8px 20px rgba(25, 118, 210, 0.35);
-      margin: 8px 0 16px;
-      user-select: none;
-    }
-    .hint {
-      font-size: 18px;
-      color: #2e7d32;
-      background: #e8f5e9;
-      border: 1px solid #c8e6c9;
-      padding: 12px 16px;
-      border-radius: 12px;
-    }
-    #status {
-      margin-top: 20px;
-      font-size: 22px;
-      color: #333;
+      font-size: 34px;
     }
     .pill {
+      margin-top: 10px;
       display: inline-block;
       padding: 8px 12px;
       border-radius: 999px;
@@ -82,166 +51,201 @@
       font-weight: 600;
       font-size: 14px;
     }
+    .body { padding: 28px; }
+    .cta {
+      width: 100%;
+      font-size: 26px;
+      padding: 22px;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      margin-bottom: 16px;
+    }
+    .hint {
+      font-size: 18px;
+      color: #2e7d32;
+      background: #e8f5e9;
+      border: 1px solid #c8e6c9;
+      padding: 12px;
+      border-radius: 12px;
+    }
+    #status {
+      margin-top: 20px;
+      font-size: 22px;
+    }
   </style>
 </head>
-<body onclick="screenTap(event)">
+
+<body onclick="screenTap()">
 
 <div class="card">
   <div class="header">
-    <h1>♿️ USER SYSTEM</h1>
-    <div class="pill" id="connection">Connecting…</div>
+    <h1>♿️ የተጠቃሚ ስርዓት</h1>
+    <div class="pill" id="connection">በመገናኘት ላይ…</div>
   </div>
+
   <div class="body">
-    <button class="cta" onclick="start()" aria-label="Tap to call bus">
-      TAP ANYWHERE TO CALL BUS
-    </button>
-    <div class="hint" id="hint">
-      Tap anywhere to speak the bus number. After arrival, tap again to speak destination.
-    </div>
-    <div id="status">Waiting…</div>
+    <button class="cta">ባስ ለመጥራት ይንኩ</button>
+    <div class="hint" id="hint">ለመጀመር ይንኩ</div>
+    <div id="status">በመጠባበቅ ላይ…</div>
   </div>
 </div>
 
 <script>
+/* ---------------- GLOBAL ---------------- */
 const ws = new WebSocket("wss://blind-transport.onrender.com/");
 const status = document.getElementById("status");
 const hint = document.getElementById("hint");
+const conn = document.getElementById("connection");
 
-let phase = "callBus"; // callBus -> awaitBus -> destination -> enRouteDestination
+let phase = "callBus";
+let userInteracted = false;
 let uLat, uLon;
 let lastBusLat, lastBusLon;
+let busArrivedAnnounced = false;
 
-function speak(text, times = 1) {
-  for (let i = 0; i < times; i++) {
-    speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-  }
+let enteredBusNumber = "";
+let enteredDestination = "";
+
+/* ---------------- AUDIO ---------------- */
+function play(file) {
+  if (!userInteracted) return Promise.resolve();
+  return new Promise(resolve => {
+    const a = new Audio(file);
+    a.onended = resolve;
+    a.play().catch(resolve);
+  });
 }
 
-ws.onopen = () => {
-  document.getElementById("connection").innerText = "Connected";
-  ws.send(JSON.stringify({ type: "USER_CONNECT" }));
-};
-
-ws.onclose = () => {
-  document.getElementById("connection").innerText = "Disconnected";
-};
-
-function screenTap(e) {
-  if (phase === "callBus") {
-    start();
-  } else if (phase === "destination") {
-    promptDestination();
-  }
-}
-
-function start() {
-  status.innerText = "Listening for bus number…";
-  speak("Please say the bus number");
-
-  const rec = new webkitSpeechRecognition();
-  rec.lang = "en-US";
-  rec.start();
-
-  rec.onresult = e => {
-    const bus = e.results[0][0].transcript;
-    status.innerText = "Bus " + bus + " requested";
-    ws.send(JSON.stringify({ type: "BUS_REQUEST", bus }));
-    phase = "awaitBus";
-    hint.innerText = "Awaiting bus. You will hear estimated minutes. The device will vibrate on arrival.";
-  };
-}
-
+/* ---------------- GEO ---------------- */
 navigator.geolocation.watchPosition(p => {
   uLat = p.coords.latitude;
   uLon = p.coords.longitude;
 });
 
-ws.onmessage = e => {
-  const d = JSON.parse(e.data);
+/* ---------------- UTILS ---------------- */
+function getDistance(a,b,c,d) {
+  const R = 6371000;
+  const x = (c-a)*Math.PI/180;
+  const y = (d-b)*Math.PI/180;
+  const k = Math.sin(x/2)**2 + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)**2;
+  return R*2*Math.atan2(Math.sqrt(k), Math.sqrt(1-k));
+}
+function calculateMinutes(m) {
+  return Math.ceil((m/1000)/30*60);
+}
 
-  if (d.type === "BUS_GPS") {
-    lastBusLat = d.lat;
-    lastBusLon = d.lon;
-    if (uLat == null  uLon == null) return;
-
-    const dist = getDistance(uLat, uLon, d.lat, d.lon); // meters
-    const mins = Math.ceil((dist / 1000) / 30 * 60); // 30 km/h
-
-    speak(mins + " minutes left");
-    status.innerText = mins + " minutes left";
-
-    if (dist < 20) {
-      navigator.vibrate([500, 500, 500]);
-      speak("Bus has arrived", 3);
-      phase = "destination";
-      hint.innerText = "Tap anywhere to speak your destination.";
-      status.innerText = "Bus arrived. Tap to speak destination.";
-    }
-  }
+/* ---------------- WS ---------------- */
+ws.onopen = () => {
+  conn.innerText = "ተገናኝቷል";
+  ws.send(JSON.stringify({ type: "USER_CONNECT" }));
 };
+ws.onerror = () => conn.innerText = "ስህተት";
+ws.onclose = () => conn.innerText = "ተቋርጧል";
 
-// NEW: Real geolocation lookup for destination
-function promptDestination() {
-  status.innerText = "Listening for destination…";
-  speak("Please say your destination");
+/* keep server awake */
+setInterval(() => {
+  if (ws.readyState === 1) ws.send(JSON.stringify({ type:"PING" }));
+}, 30000);
 
+/* ---------------- TAP ---------------- */
+function screenTap() {
+  userInteracted = true;
+  if (phase === "callBus") startBusNumber();
+  else if (phase === "destination") promptDestination();
+}
+
+/* ---------------- BUS NUMBER ---------------- */
+async function startBusNumber() {
+  status.innerText = "የባስ ቁጥር ይናገሩ";
+  await play("enter_bus_number.wav");
+  startRecordingBus();
+}
+
+function startRecordingBus() {
+  if (!('webkitSpeechRecognition' in window)) {
+    alert("Chrome ያስፈልጋል");
+    return;
+  }
   const rec = new webkitSpeechRecognition();
-  rec.lang = "en-US";
+  rec.lang = "am-ET";
   rec.start();
 
   rec.onresult = e => {
-    const phrase = e.results[0][0].transcript.trim();
-    status.innerText = "Destination: " + phrase;
-    hint.innerText = "Calculating route…";
-
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(phrase)}`)
-      .then(res => res.json())
-      .then(results => {
-        if (results.length === 0) {
-          speak("Destination not found");
-          status.innerText = "Destination not found";
-          return;
-        }
-
-        const destLat = parseFloat(results[0].lat);
-        const destLon = parseFloat(results[0].lon);
-
-        const dist = getDistance(lastBusLat, lastBusLon, destLat, destLon); // meters
-        const minutes = Math.ceil((dist / 1000) / 30 * 60);
-
-        speak(minutes + " minutes to destination");
-        status.innerText = minutes + " minutes to destination";
-
-        phase = "enRouteDestination";
-        hint.innerText = "En route to destination. You will be notified on arrival.";
-
-        const checkArrival = setInterval(() => {
-          if (!lastBusLat  !lastBusLon) return;
-          const d = getDistance(lastBusLat, lastBusLon, destLat, destLon);
-          if (d < 20) {
-            clearInterval(checkArrival);
-            speak("Bus has arrived, please unboard", 3);
-            status.innerText = "Bus has arrived. Please unboard.";
-            hint.innerText = "Trip complete.";
-            phase = "complete";
-          }
-        }, 5000);
-      })
-      .catch(err => {
-        speak("Error finding destination");
-        status.innerText = "Error finding destination";
-      });
+    enteredBusNumber = e.results[0][0].transcript;
+    status.innerText = `ባስ ቁጥር: ${enteredBusNumber}`;
+    ws.send(JSON.stringify({ type:"BUS_REQUEST", bus: enteredBusNumber }));
+    phase = "awaitBus";
+    hint.innerText = "ባስ በመጠባበቅ ላይ…";
   };
 }
 
-function getDistance(a,b,c,d) {
-  const R=6371000;
-  const x=(c-a)*Math.PI/180;
-  const y=(d-b)*Math.PI/180;
-  const k=Math.sin(x/2)**2 +
-    Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180) *
-    Math.sin(y/2)**2;
-  return R*2*Math.atan2(Math.sqrt(k),Math.sqrt(1-k));
+/* ---------------- BUS GPS ---------------- */
+ws.onmessage = async e => {
+  const d = JSON.parse(e.data);
+  if (d.type !== "BUS_GPS") return;
+
+  lastBusLat = d.lat;
+  lastBusLon = d.lon;
+  if (!uLat || !uLon) return;
+
+  const dist = getDistance(uLat, uLon, d.lat, d.lon);
+  const mins = calculateMinutes(dist);
+
+  status.innerText = `ባስ በ${mins} ደቂቃ ይደርሳል`;
+
+  if (dist < 20 && !busArrivedAnnounced) {
+    busArrivedAnnounced = true;
+    navigator.vibrate([500,500,500]);
+    await play("bus_arrived_board.wav");
+    phase = "destination";
+    hint.innerText = "መድረሻዎን ይናገሩ";
+  }
+};
+
+/* ---------------- DESTINATION ---------------- */
+async function promptDestination() {
+  status.innerText = "መድረሻ ይናገሩ";
+  await play("enter_destination.wav");
+  startRecordingDestination();
+}
+
+function startRecordingDestination() {
+  const rec = new webkitSpeechRecognition();
+  rec.lang = "am-ET";
+  rec.start();
+
+  rec.onresult = async e => {
+    enteredDestination = e.results[0][0].transcript.trim();
+    status.innerText = `መድረሻ: ${enteredDestination}`;
+
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(enteredDestination)}`
+    );
+    const data = await res.json();
+    if (!data.length) return;
+
+    const destLat = +data[0].lat;
+    const destLon = +data[0].lon;
+
+    let minsLeft = calculateMinutes(
+      getDistance(lastBusLat, lastBusLon, destLat, destLon)
+    );
+
+    const timer = setInterval(async () => {
+      if (minsLeft <= 0) {
+        clearInterval(timer);
+        navigator.vibrate([500,500,500]);
+        await play("unboard.wav");
+        status.innerText = "ጉዞ ተጠናቀቀ";
+        phase = "complete";
+      } else {
+        status.innerText = `መድረሻ ለ${enteredDestination}: ${minsLeft} ደቂቃ`;
+        minsLeft--;
+      }
+    }, 60000);
+  };
 }
 </script>
 </body>
