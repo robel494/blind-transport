@@ -4,11 +4,11 @@
   <title>የባስ ስርዓት</title>
   <style>
     :root {
-      --bg: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+      --bg: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
       --card-bg: #ffffffcc;
-      --primary: #d50000;
-      --accent: #ff6f00;
-      --text: #2d2d2d;
+      --primary: #0d47a1;
+      --accent: #00c853;
+      --text: #1f1f1f;
     }
     * { box-sizing: border-box; }
     body {
@@ -21,134 +21,199 @@
       align-items: center;
       justify-content: center;
       padding: 24px;
+      cursor: pointer;
     }
-    .card {
-      width: 100%;
-      max-width: 720px;
-      background: var(--card-bg);
-      backdrop-filter: blur(6px);
-      border-radius: 28px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.15);
-      overflow: hidden;
-      border: 1px solid rgba(0,0,0,0.06);
-    }
-    .header {
-      padding: 28px;
-      background: linear-gradient(120deg, #ff1744, #ff9100);
-      color: #fff;
-    }
-    .header h1 {
-      margin: 0;
-      font-size: 36px;
-      letter-spacing: 1px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .body {
-      padding: 28px;
-    }
-    .alert {
-      font-size: 28px;
-      color: var(--primary);
-      margin-top: 12px;
-    }
-    .status-grid {
-      margin-top: 20px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-    .status {
-      background: #fff;
-      border-radius: 16px;
-      padding: 16px;
-      border: 1px solid rgba(0,0,0,0.08);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
-    .status h3 {
-      margin: 0 0 8px 0;
-      font-size: 18px;
-      color: var(--accent);
-    }
-    .pill {
-      display: inline-block;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: #ffe0b2;
-      color: #6d4c41;
-      font-weight: 600;
-      font-size: 14px;
-    }
+    .card { width: 100%; max-width: 760px; background: var(--card-bg); backdrop-filter: blur(6px); border-radius: 28px; box-shadow: 0 12px 32px rgba(0,0,0,0.15); overflow: hidden; border: 1px solid rgba(0,0,0,0.06);}
+    .header {padding: 28px; background: linear-gradient(120deg, #1976d2, #00c853); color: #fff;}
+    .header h1 { margin: 0; font-size: 36px; display: flex; align-items: center; gap: 12px; }
+    .body { padding: 28px; }
+    .cta { display: block; width: 100%; text-align: center; font-size: 28px; padding: 22px; background: #1976d2; color: white; border: none; border-radius: 20px; box-shadow: 0 8px 20px rgba(25,118,210,0.35); margin: 8px 0 16px; user-select: none;}
+    .hint { font-size: 18px; color: #2e7d32; background: #e8f5e9; border: 1px solid #c8e6c9; padding: 12px 16px; border-radius: 12px;}
+    #status { margin-top: 20px; font-size: 22px; color: #333;}
+    .pill { display: inline-block; padding: 8px 12px; border-radius: 999px; background: #bbdefb; color: #0d47a1; font-weight: 600; font-size: 14px;}
   </style>
 </head>
-<body>
+<body onclick="screenTap()">
 
 <div class="card">
   <div class="header">
-    <h1>🚌 የባስ ስርዓት</h1>
+    <h1>♿ የተጠቃሚ ስርዓት</h1>
     <div class="pill" id="connection">በመገናኘት ላይ…</div>
   </div>
   <div class="body">
-    <div class="alert" id="alert">ተሳፋሪን በመጠባበቅ ላይ…</div>
-    <div class="status-grid">
-      <div class="status">
-        <h3>የባስ ሁኔታ</h3>
-        <div id="busState">ባዶ</div>
-      </div>
-      <div class="status">
-        <h3>GPS ስትሪሚንግ</h3>
-        <div id="gpsState">በመዝጋት</div>
-      </div>
-    </div>
+    <button class="cta">ባስ ለመጥራት የትኛውንም ቦታ ይንኩ</button>
+    <div class="hint" id="hint">የትኛውንም ቦታ ይንኩ ለመጀመር</div>
+    <div id="status">በመጠባበቅ ላይ…</div>
   </div>
 </div>
 
 <script>
 const ws = new WebSocket("wss://blind-transport.onrender.com/");
-let watchId = null;
+const status = document.getElementById("status");
+const hint = document.getElementById("hint");
 
-// Play alert.wav when blind passenger request arrives
-function playAlert() {
-  const audio = new Audio("alert.wav");
-  audio.play();
+let phase = "callBus";
+let uLat, uLon;
+let lastBusLat, lastBusLon;
+let busArrivedAnnounced = false;
+let lastMinuteStateBus = null;
+let lastMinuteStateDest = null;
+
+let enteredBusNumber = "";
+let enteredDestination = "";
+
+// --- AUDIO PROMISE ---
+function play(file) {
+  return new Promise(resolve => {
+    const audio = new Audio(file);
+    audio.onended = resolve;
+    audio.play();
+  });
 }
 
+// --- DISTANCE & TIME CALC ---
+function getDistance(a,b,c,d) {
+  const R = 6371000;
+  const x = (c-a)*Math.PI/180;
+  const y = (d-b)*Math.PI/180;
+  const k = Math.sin(x/2)2 + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)2;
+  return R*2*Math.atan2(Math.sqrt(k), Math.sqrt(1-k));
+}
+function calculateMinutes(distanceMeters) { return Math.ceil((distanceMeters/1000)/30*60); }
+function calcTariff(distanceMeters) {
+  let birr = Math.ceil(distanceMeters/1000*10);
+  if (birr <= 15) return 15;
+  if (birr <= 25) return 25;
+  return 30;
+}
+
+// --- WS CONNECTION ---
 ws.onopen = () => {
   document.getElementById("connection").innerText = "ተገናኝቷል";
-  ws.send(JSON.stringify({ type: "BUS_CONNECT" }));
+  ws.send(JSON.stringify({ type: "USER_CONNECT" }));
 };
+ws.onclose = () => { document.getElementById("connection").innerText = "ተቋርጧል"; };
 
-ws.onclose = () => {
-  document.getElementById("connection").innerText = "ተቋርጧል";
-};
+// --- SCREEN TAP ---
+function screenTap() {
+  if (phase === "callBus") startBusNumber();
+  else if (phase === "destination") promptDestination();
+}
 
-ws.onmessage = e => {
-  const data = JSON.parse(e.data);
+// --- BUS NUMBER ---
+async function startBusNumber() {
+  status.innerText = "የባስ ቁጥር እየተሰማ…";
+  await play("enter_bus_number.wav");
+  startRecordingBusNumber();
+}
+function startRecordingBusNumber() {
+  const rec = new webkitSpeechRecognition();
+  rec.lang = "am-ET";
+  rec.start();
+  rec.onresult = e => {
+    enteredBusNumber = e.results[0][0].transcript;
+    status.innerText = ባስ ቁጥር: ${enteredBusNumber} ተጠቅመዋል;
+    ws.send(JSON.stringify({ type: "BUS_REQUEST", bus: enteredBusNumber }));
+    play("request_sent.wav");
+    phase = "awaitBus";
+    hint.innerText = "ባስ በመጠባበቅ ላይ…";
+  };
+}
+  navigator.geolocation.watchPosition(p => { uLat = p.coords.latitude; uLon = p.coords.longitude; });
 
-  if (data.type === "BUS_REQUEST") {
-    document.getElementById("alert").innerText =
-      "🚨 በስቴሽን 4 ተሳፋሪ በመጠባበቅ ላይ";
-    playAlert();
-    document.getElementById("busState").innerText = "በጥያቄ ላይ";
-    if (watchId === null) {
-      document.getElementById("gpsState").innerText = "በላይ";
-      watchId = navigator.geolocation.watchPosition(pos => {
-        ws.send(JSON.stringify({
-          type: "BUS_GPS",
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude
-        }));
-      }, err => {
-        document.getElementById("gpsState").innerText = "ስህተት";
-      }, {
-        enableHighAccuracy: true,
-        maximumAge: 1000,
-        timeout: 10000
-      });
+ws.onmessage = async e => {
+  const d = JSON.parse(e.data);
+  if (d.type === "BUS_GPS") {
+    lastBusLat = d.lat; lastBusLon = d.lon;
+    if (!uLat || !uLon) return;
+    const dist = getDistance(uLat, uLon, d.lat, d.lon);
+    const mins = calculateMinutes(dist);
+
+    // --- BUS ARRIVAL ---
+    if (dist < 20 && !busArrivedAnnounced) {
+      busArrivedAnnounced = true;
+      navigator.vibrate([500,500,500]);
+      await play("bus_arrived_board.wav");
+      phase = "destination";
+      hint.innerText = "መድረሻዎን ለመናገር ይንኩ።";
+      status.innerText = "ባስ ደርሷል";
     }
+
+    // --- MINUTES ALERT (first speak below/above 10min, then tariff) ---
+    if (dist > 50) {
+      if (mins <=10 && lastMinuteStateBus !== "below10") { 
+        lastMinuteStateBus = "below10";
+        await play("bus_arrival_below_10.wav"); 
+      }
+      else if (mins >10 && lastMinuteStateBus !== "above10") { 
+        lastMinuteStateBus = "above10";
+        await play("bus_arrival_above_10.wav"); 
+      }
+
+      // --- THEN SPEAK TARFF ---
+      const tariff = calcTariff(dist);
+      if (tariff===15) await play("money1.5.wav");
+      else if (tariff===25) await play("money2.5.wav");
+      else await play("money3.wav");
+    }
+
+    status.innerText = ባስ ለመድረሻ: ${mins} ደቂቃ ቀሪ ነው;
   }
 };
+
+// --- DESTINATION ---
+async function promptDestination() {
+  status.innerText = "መድረሻ እየተሰማ…";
+  await play("enter_destination.wav");
+  startRecordingDestination();
+}
+
+function startRecordingDestination() {
+  const rec = new webkitSpeechRecognition();
+  rec.lang = "am-ET";
+  rec.start();
+  rec.onresult = async e => {
+    enteredDestination = e.results[0][0].transcript.trim();
+    status.innerText = መድረሻ: ${enteredDestination};
+
+    const results = await fetch(https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(enteredDestination)}).then(res=>res.json());
+    if (!results.length) return;
+
+    const destLat = parseFloat(results[0].lat);
+    const destLon = parseFloat(results[0].lon);
+    const distMeters = getDistance(lastBusLat, lastBusLon, destLat, destLon);
+    let minsLeft = calculateMinutes(distMeters);
+
+    status.innerText = መድረሻ ለ${enteredDestination}: ${minsLeft} ደቂቃ ቀሪ ነው;
+    
+    // --- COUNTDOWN ---
+    const countdown = setInterval(async () => {
+      if (minsLeft <= 0) {
+        clearInterval(countdown);
+        navigator.vibrate([500,500,500]);
+        await play("unboard.wav");
+        status.innerText = "ጉዞ ተጠናቀቀ";
+        phase = "complete";
+      } else {
+        minsLeft--;
+        status.innerText = መድረሻ ለ${enteredDestination}: ${minsLeft} ደቂቃ ቀሪ ነው;
+      }
+    }, 60000);
+
+    // --- BELOW/ABOVE 10 MIN FIRST ---
+    if (minsLeft <= 10 && lastMinuteStateDest !== "below10") lastMinuteStateDest="below10";
+    else if (minsLeft > 10 && lastMinuteStateDest !== "above10") lastMinuteStateDest="above10";
+
+    if (lastMinuteStateDest==="below10") await play("bus_arrival_below_10.wav");
+    else await play("bus_arrival_above_10.wav");
+
+    // --- THEN TARIFF ---
+    const tariff = calcTariff(distMeters);
+    if (tariff===15) await play("money1.5.wav");
+    else if (tariff===25) await play("money2.5.wav");
+    else await play("money3.wav");
+  };
+}
 </script>
 </body>
 </html>
