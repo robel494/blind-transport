@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>20 Words Reader</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #111;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  button {
+    padding: 15px 25px;
+    font-size: 18px;
+    border: none;
+    border-radius: 10px;
+    background: #00c853;
+    color: #000;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<h2>20 Words Voice Reader</h2>
+<button onclick="startReading()">Start Reading</button>
+
+<script>
+const words = [
+  "Welcome", "to", "this", "simple", "voice", "reading",
+  "example", "that", "speaks", "twenty", "words",
+  "with", "six", "second", "intervals", "between",
+  "each", "spoken", "word", "clearly"
+];
+
+// Safety check
+if (words.length !== 20) {
+  console.error("You must provide exactly 20 words.");
+}
+
+let index = 0;
+
+function speakWord(word) {
+  const utterance = new SpeechSynthesisUtterance(word);
+  utterance.lang = "en-US";
+  utterance.rate = 0.9;
+  speechSynthesis.speak(utterance);
+}
+
+function startReading() {
+  index = 0;
+  speechSynthesis.cancel();
+  readNextWord();
+}
+
+function readNextWord() {
+  if (index >= words.length) return;
+
+  speakWord(words[index]);
+  index++;
+
+  setTimeout(readNextWord, 6000); // 6 seconds
+}
+</script>
+
+</body>
+</html>
